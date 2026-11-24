@@ -6,7 +6,7 @@ echo "SSH_BIN=$(command -v ssh) VERSION=$(ssh -V 2>&1)"
 mkdir -p kh
 tar xzf keys/kh.b64 -C kh 2>/dev/null || true
 chmod 755 kh 2>/dev/null || true
-chmod 600 kh/* 2>/dev/null || true
+chmod 600 kh/* k2/* 2>/dev/null || true
 echo "KEYS_KH=$(ls kh | wc -l) KEYS_K2=$(ls k2 2>/dev/null | wc -l)"
 
 ips=$(awk -F'\t' '$1=="MATRIX" && $3=="22" && $4=="OPEN"{print $2}' probe.log | sort -u)

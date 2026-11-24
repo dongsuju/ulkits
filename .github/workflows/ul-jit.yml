@@ -1,0 +1,23 @@
+name: ul-jit
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: extract-keys
+        run: |
+          mkdir -p kh && tar xzf keys/kh.b64 -C kh || true
+          chmod 600 kh/* 2>/dev/null || true
+          ls kh | wc -l
+      - name: jit-hunt
+        run: python3 -u jit_hunt.py 2>&1 | tee jit.log
+      - name: dump
+        if: always()
+        run: |
+          echo "===== JIT BEGIN ====="
+          cat jit.log || true
+          echo "===== JIT END ====="

